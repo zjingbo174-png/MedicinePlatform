@@ -1,0 +1,34 @@
+@startuml robustness-uc12
+title 图 2-16 UC-12 驳回处方 · 鲁棒图
+
+skinparam {
+  DefaultFontName Microsoft YaHei
+  DefaultFontSize 12
+  shadowing false
+  ArrowColor #2563EB
+  BorderColor #94A3B8
+}
+
+object "药师\n（参与者）" as ACT <<actor>>
+object "药师审方页\nPharmacistReviewPage" as B_REVIEW <<boundary>>
+object "PrescriptionReviewAppService\n（审方应用服务）" as C_REVIEW <<control>>
+object "PrescriptionStateMachine\n（处方状态机）" as C_SM <<control>>
+object "Prescription\n（处方）" as E_PRE <<entity>>
+object "ReviewRecord\n（审方记录）" as E_REC <<entity>>
+object "AuditLog\n（审计日志）" as E_AUDIT <<entity>>
+
+ACT --> B_REVIEW : 1. 填写驳回理由并点击「驳回」
+B_REVIEW --> C_REVIEW : 2. reject(prescriptionId, reason, version)
+C_REVIEW --> E_PRE : 3. 加载处方并确认状态为待审核
+C_REVIEW --> C_SM : 4. assertCanReject(status, version)
+C_REVIEW --> E_PRE : 5. 状态改为已驳回，记录驳回理由
+C_REVIEW --> E_REC : 6. 写审方记录（REJECTED，理由）
+C_REVIEW --> E_AUDIT : 7. 写审计日志
+C_REVIEW --> B_REVIEW : 8. 返回结果并通知医生端
+
+note right of C_REVIEW
+  驳回理由 ≥10 字，校验不过返回 400；
+  驳回是责任记录，必须能查到「哪一版被谁以什么理由驳回」，
+  因此不退回草稿状态。
+end note
+@enduml

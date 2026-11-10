@@ -1,0 +1,57 @@
+@startuml sequence-uc07
+title 图 2-7 UC-07 接诊与拒诊 · 顺序图
+
+skinparam {
+  DefaultFontName Microsoft YaHei
+  DefaultFontSize 11
+  shadowing false
+  ArrowColor #2563EB
+  BorderColor #94A3B8
+}
+
+actor 医生 as P
+participant "DoctorOrderPage" as UI
+participant "ConsultationOrderController" as CTRL
+participant "ConsultationOrderAppService" as SVC
+participant "ConsultationOrder" as ORDER
+participant "ConsultationOrderRepository" as REPO
+participant "RefundGateway" as REFUND
+database "MySQL" as DB
+participant "AuditRecorder" as AUDIT
+
+P -> UI : 打开「待接诊」订单
+UI -> CTRL : POST /api/v1/orders/{id}/accept\n（或 /reject，body 含 reason）
+CTRL -> SVC : accept/reject(orderId, currentDoctorId, reason)
+SVC -> REPO : findByIdAndDoctorId(orderId, doctorId)
+REPO --> SVC : ORDER
+
+alt 订单不存在或不属于当前医生
+  SVC --> CTRL : 404 NOT_FOUND
+  CTRL --> UI : 统一错误响应
+else 订单状态不是「待接诊」
+  SVC --> CTRL : 409 STATE_CONFLICT
+  CTRL --> UI : 返回 currentStatus
+else 接诊
+  SVC -> ORDER : accept(now)
+  SVC -> REPO : update(order)，version + 1
+  REPO -> DB : UPDATE order SET status='IN_CONSULTATION',\naccepted_at=?, version=?+1 WHERE id=? AND status='PENDING_ACCEPT'
+  SVC -> AUDIT : record(ORDER_ACCEPT, orderId)
+  SVC --> CTRL : OrderVO(status=IN_CONSULTATION)
+  CTRL --> UI : 200 { data }
+else 拒诊
+  SVC -> ORDER : reject(reason, now)
+  SVC -> REFUND : refund(orderNo, fee)
+  REFUND --> SVC : refundResult
+  SVC -> REPO : update(order)，version + 1
+  REPO -> DB : UPDATE order SET status='CANCELLED', cancelled_at=?,\nreject_reason=?, cancel_reason='REJECTED', version=?+1
+  SVC -> AUDIT : record(ORDER_REJECT, reason)
+  SVC --> CTRL : OrderVO(status=CANCELLED)
+  CTRL --> UI : 200 { data }
+end
+
+note right of SVC
+  拒诊理由为空时返回 400；
+  退款为教学模拟，不接真实支付通道，
+  只记录退款结果与审计日志。
+end note
+@enduml

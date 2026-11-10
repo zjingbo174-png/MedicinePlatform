@@ -1,0 +1,33 @@
+@startuml robustness-uc14
+title 图 2-18 UC-14 核销处方 · 鲁棒图
+
+skinparam {
+  DefaultFontName Microsoft YaHei
+  DefaultFontSize 12
+  shadowing false
+  ArrowColor #2563EB
+  BorderColor #94A3B8
+}
+
+object "药师\n（参与者）" as ACT <<actor>>
+object "药师核销页\nPharmacistDispensePage" as B_DIS <<boundary>>
+object "DispenseAppService\n（核销应用服务）" as C_DIS <<control>>
+object "PrescriptionStateMachine\n（处方状态机）" as C_SM <<control>>
+object "Prescription\n（处方）" as E_PRE <<entity>>
+object "AuditLog\n（审计日志）" as E_AUDIT <<entity>>
+
+ACT --> B_DIS : 1. 扫描 / 输入处方号并确认核销
+B_DIS --> C_DIS : 2. dispense(prescriptionId, version)
+C_DIS --> E_PRE : 3. 加载处方
+C_DIS --> C_SM : 4. assertCanDispense(status, validUntil, now)
+C_SM --> E_PRE : 5. 读取状态与有效期
+C_DIS --> E_PRE : 6. 状态改为已核销，记录核销人与时间
+C_DIS --> E_AUDIT : 7. 写审计日志
+C_DIS --> B_DIS : 8. 返回核销结果
+
+note right of C_SM
+  只有「待核销」且未过期的处方可核销；
+  重复核销返回 409；
+  过期处方由定时任务置为「已作废」，核销时也会拒绝。
+end note
+@enduml

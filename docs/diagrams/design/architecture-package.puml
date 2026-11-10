@@ -1,0 +1,107 @@
+@startuml architecture-package
+title 图 2-1 系统逻辑架构包图\n模块化单体 + 前后端分离 + DDD 限界上下文
+
+skinparam {
+  DefaultFontName Microsoft YaHei
+  DefaultFontSize 12
+  packageStyle rectangle
+  shadowing false
+  ArrowColor #2563EB
+  BorderColor #94A3B8
+  BackgroundColor #FFFFFF
+}
+
+top to bottom direction
+
+package "表示层（Vue 3 SPA）" as L_UI #EFF6FF {
+  [患者端] as UI_P
+  [医生工作台] as UI_D
+  [药师工作台] as UI_PH
+  [管理后台] as UI_A
+}
+
+package "接入层（Nginx）" as L_GW #F8FAFC {
+  [静态资源 dist] as NGINX_STATIC
+  [/api 反向代理] as NGINX_API
+}
+
+package "应用层：com.medicine.platform（Spring Boot 3.5 模块化单体）" as L_APP_BOX #F5F3FF {
+
+  package "接口层 interfaces" as L_IF #FFFFFF {
+    package "identity" as IF_ID
+    package "catalog" as IF_CAT
+    package "consultation" as IF_CON
+    package "prescription" as IF_PRE
+    package "pharmacy" as IF_PHA
+    package "admin" as IF_ADM
+  }
+
+  package "应用层 application" as L_APP #FFFFFF {
+    package "identity" as APP_ID
+    package "catalog" as APP_CAT
+    package "consultation" as APP_CON
+    package "prescription" as APP_PRE
+    package "pharmacy" as APP_PHA
+    package "admin" as APP_ADM
+  }
+
+  package "领域层 domain" as L_DOM #FFFFFF {
+    package "identity" as DOM_ID
+    package "catalog" as DOM_CAT
+    package "consultation" as DOM_CON
+    package "prescription" as DOM_PRE
+    package "pharmacy" as DOM_PHA
+    package "admin" as DOM_ADM
+  }
+
+  package "基础设施层 infrastructure" as L_INF #FFFFFF {
+    package "identity" as INF_ID
+    package "catalog" as INF_CAT
+    package "consultation" as INF_CON
+    package "prescription" as INF_PRE
+    package "pharmacy" as INF_PHA
+    package "admin" as INF_ADM
+  }
+
+  package "公共内核 common" as L_COMMON #F8FAFC {
+    [统一响应 / 分页] as CM_API
+    [异常与错误码] as CM_EXC
+    [JWT / CurrentUser] as CM_SEC
+    [审计切面] as CM_AUDIT
+  }
+}
+
+package "数据层" as L_DATA #ECFDF5 {
+  database "MySQL 8.0\n业务库 medicine" as DB
+  folder "文件存储\n问诊图片 / uploads" as FS
+  database "Redis 7（可选）" as REDIS
+}
+
+' 只画层与层之间的依赖，避免模块内部箭头把图打乱；
+' 每个模块内部仍按 interfaces -> application -> domain <- infrastructure 组织。
+L_UI --> L_GW : HTTP/HTTPS
+L_GW --> L_IF : /api/v1
+L_IF --> L_APP
+L_APP --> L_DOM
+L_INF ..> L_DOM : 实现仓储 / 网关接口
+L_APP ..> L_COMMON : 统一响应、异常、安全、审计
+L_INF --> L_DATA : JDBC / 文件 IO
+
+note right of L_COMMON
+  依赖规则（代码审查必查）：
+  1. interfaces → application → domain ← infrastructure；
+  2. domain 不依赖 Spring MVC、MyBatis 等基础设施；
+  3. 模块之间只通过 application 公开服务或 domain 的 query port 协作，
+     禁止跨模块访问 Mapper / Entity / Controller；
+  4. common 只放技术内核，不放业务规则。
+end note
+
+note bottom of L_DOM
+  领域层按限界上下文分为六个子包：
+  identity（用户/角色）、catalog（科室/医生/药品）、
+  consultation（订单/支付/消息）、prescription（处方/明细/审方记录/状态机）、
+  pharmacy（待审队列/核销）、admin（统计/审计只读）。
+  prescription 是处方状态的唯一权威实现。
+end note
+
+@enduml

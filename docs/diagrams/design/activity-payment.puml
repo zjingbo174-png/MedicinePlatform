@@ -1,0 +1,44 @@
+@startuml activity-payment
+title 图 2-20 活动图：问诊订单支付（UC-06）
+
+skinparam {
+  DefaultFontName Microsoft YaHei
+  DefaultFontSize 12
+  shadowing false
+  ArrowColor #2563EB
+  BorderColor #94A3B8
+  ActivityBackgroundColor #FFFFFF
+  ActivityBorderColor #2563EB
+}
+
+start
+:患者打开订单支付页;
+:输入登录密码并提交;
+:ConsultationOrderAppService.pay(orderId, password);
+:加载订单：findByIdAndPatientId(orderId, patientId);
+if (订单存在且属于当前患者?) then (否)
+  :返回 404 NOT_FOUND;
+  stop
+endif
+if (订单状态 = 待支付?) then (否)
+  :返回 409 STATE_CONFLICT;
+  stop
+endif
+:PasswordVerifier.verify(userId, password);
+if (BCrypt 校验通过?) then (否)
+  :返回 400 PAY_PASSWORD_ERROR;
+  note right: 订单保持「待支付」，允许重试
+  stop
+endif
+:订单状态改为「待接诊」，记录 pay_time;
+:乐观锁更新：
+UPDATE ... WHERE id=? AND status='PENDING_PAYMENT' AND version=?;
+if (受影响行数 = 0?) then (是)
+  :返回 409，提示刷新后重试;
+  stop
+endif
+:写审计日志（PAY_SUCCESS）;
+:返回支付成功;
+stop
+
+@enduml

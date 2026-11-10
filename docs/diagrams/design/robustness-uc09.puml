@@ -1,0 +1,37 @@
+@startuml robustness-uc09
+title 图 2-10 UC-09 开具处方（草稿） · 鲁棒图
+
+skinparam {
+  DefaultFontName Microsoft YaHei
+  DefaultFontSize 12
+  shadowing false
+  ArrowColor #2563EB
+  BorderColor #94A3B8
+}
+
+object "医生\n（参与者）" as ACT <<actor>>
+object "处方编辑页\nPrescriptionEditPage" as B_PRE <<boundary>>
+object "PrescriptionDraftService\n（处方草稿服务）" as C_DRAFT <<control>>
+object "DrugQueryPort\n（药品目录查询）" as C_DRUG <<control>>
+object "Prescription\n（处方）" as E_PRE <<entity>>
+object "PrescriptionItem\n（处方明细）" as E_ITEM <<entity>>
+object "Drug\n（药品）" as E_DRUG <<entity>>
+object "ConsultationOrder\n（问诊订单）" as E_ORDER <<entity>>
+
+ACT --> B_PRE : 1. 打开订单并进入「开具处方」
+B_PRE --> C_DRAFT : 2. createOrGetDraft(orderId)
+C_DRAFT --> E_ORDER : 3. 校验订单归属、状态为问诊中
+C_DRAFT --> E_PRE : 4. 创建 / 读取 DRAFT 草稿
+B_PRE --> C_DRUG : 5. searchDrug(keyword)
+C_DRUG --> E_DRUG : 6. 查询启用状态的药品
+B_PRE --> C_DRAFT : 7. saveDraft(diagnosis, items)
+C_DRAFT --> E_PRE : 8. 校验诊断与明细（1~5 条）
+C_DRAFT --> E_ITEM : 9. 保存明细与药品名称/单价快照
+C_DRAFT --> B_PRE : 10. 返回处方详情
+
+note right of C_DRAFT
+  草稿可反复编辑，不改变处方状态（DRAFT）；
+  明细保存药品名称、规格、单价的快照，
+  后续药品调价不影响历史处方。
+end note
+@enduml

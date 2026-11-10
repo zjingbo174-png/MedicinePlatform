@@ -1,0 +1,60 @@
+@startuml sequence-uc06
+title 图 2-5 UC-06 支付问诊费 · 顺序图
+
+skinparam {
+  DefaultFontName Microsoft YaHei
+  DefaultFontSize 11
+  shadowing false
+  ArrowColor #2563EB
+  BorderColor #94A3B8
+  SequenceLifeLineBorderColor #94A3B8
+}
+
+actor 患者 as P
+participant "OrderPayPage" as UI
+participant "ConsultationOrderController" as CTRL
+participant "ConsultationOrderAppService" as SVC
+participant "PasswordVerifier" as PWD
+participant "ConsultationOrder" as ORDER
+participant "ConsultationOrderRepository" as REPO
+database "MySQL" as DB
+participant "AuditRecorder" as AUDIT
+
+P -> UI : 输入登录密码，点击「确认支付」
+UI -> CTRL : POST /api/v1/orders/{id}/pay
+CTRL -> SVC : pay(orderId, password, currentUserId)
+SVC -> REPO : findByIdAndPatientId(orderId, patientId)
+REPO --> SVC : ORDER
+
+alt 订单不存在或不属于当前患者
+  SVC --> CTRL : 404 NOT_FOUND（不泄露资源是否存在）
+  CTRL --> UI : 统一错误响应
+  UI --> P : 提示订单不存在
+else 订单状态不是「待支付」
+  SVC --> CTRL : 409 STATE_CONFLICT
+  CTRL --> UI : 返回 currentStatus
+  UI --> P : 提示当前状态不允许支付
+else 密码校验失败
+  SVC -> PWD : verify(userId, password)
+  PWD --> SVC : false
+  SVC --> CTRL : 400 PAY_PASSWORD_ERROR
+  CTRL --> UI : 返回错误码与提示
+  UI --> P : 提示密码错误，订单仍待支付
+else 校验通过
+  SVC -> PWD : verify(userId, password)
+  PWD --> SVC : true
+  SVC -> ORDER : pay(now)
+  SVC -> REPO : update(order)，version + 1
+  REPO -> DB : UPDATE order SET status=?,pay_time=?,version=?+1\nWHERE id=? AND status='PENDING_PAYMENT' AND version=?
+  SVC -> AUDIT : record(PAY_SUCCESS, orderId)
+  SVC --> CTRL : OrderVO(status=PENDING_ACCEPT)
+  CTRL --> UI : 200 { data }
+  UI --> P : 支付成功，等待医生接诊
+end
+
+note right of SVC
+  并发与幂等：更新语句带 status 与 version 条件，
+  受影响行数为 0 时返回 409；
+  重复支付不会产生第二次成功。
+end note
+@enduml

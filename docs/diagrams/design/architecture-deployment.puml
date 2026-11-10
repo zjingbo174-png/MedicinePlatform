@@ -1,0 +1,73 @@
+@startuml architecture-deployment
+title 图 2-2 系统物理架构部署图\n（开发环境 / Docker Compose 演示环境）
+
+skinparam {
+  DefaultFontName Microsoft YaHei
+  DefaultFontSize 12
+  shadowing false
+  ArrowColor #2563EB
+  BorderColor #94A3B8
+}
+
+actor "用户\nChrome / Edge" as BROWSER
+
+node "开发环境" as DEV #F8FAFC {
+  node "开发者电脑" {
+    artifact "Vite 开发服务器\n:5173" as VITE
+    artifact "Spring Boot\n:8080" as DEV_APP
+    database "MySQL 8.0\n:3306" as DEV_DB
+  }
+}
+
+node "Docker Compose 主机（演示 / 验收环境）" as HOST #F5F3FF {
+  node "nginx 容器" as NGINX {
+    artifact "Vue dist\n静态资源" as DIST
+    artifact "/api 反向代理" as PROXY
+  }
+  node "backend 容器" as BACKEND {
+    component "Spring Boot 3.5\nJWT / 权限 / 状态机 / 审计" as APP
+  }
+  database "mysql 容器\nMySQL 8.0 :3306" as MYSQL
+  database "redis 容器（可选）\n:6379" as REDIS
+  node "数据卷" as VOL {
+    artifact "mysql-data" as VOL_DB
+    artifact "uploads\n问诊图片" as VOL_FS
+  }
+}
+
+cloud "外部系统（本期不接入）" as EXT {
+  [真实支付通道] as PAY
+  [医保结算] as INSURANCE
+}
+
+BROWSER --> DIST : HTTP/HTTPS :80/443
+BROWSER --> VITE : 开发访问 :5173
+VITE --> DEV_APP : /api 代理
+DEV_APP --> DEV_DB : JDBC :3306
+DIST --> PROXY
+PROXY --> APP : :8080
+APP --> MYSQL : JDBC :3306
+APP --> REDIS : 可选
+MYSQL --> VOL_DB : 数据文件
+APP --> VOL_FS : 上传文件
+APP ..> PAY : 本期不接入
+APP ..> INSURANCE : 本期不接入
+
+note bottom of MYSQL
+  演示环境 MySQL / Redis 不映射到宿主机端口，
+  只加入 Docker 内部网络；
+  对外仅开放 Nginx 的 80/443。
+end note
+
+note bottom of APP
+  JWT_SECRET、DB 密码由 .env 注入，不提交到 Git；
+  后端无状态，可在 Nginx 后水平扩展多个实例。
+end note
+
+note bottom of DEV
+  开发环境不启 Nginx：
+  Vite 将 /api 代理到 localhost:8080，
+  避免 CORS；前端与后端可分别启动。
+end note
+
+@enduml

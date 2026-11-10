@@ -1,0 +1,32 @@
+@startuml robustness-uc08
+title 图 2-8 UC-08 图文问诊 · 鲁棒图
+
+skinparam {
+  DefaultFontName Microsoft YaHei
+  DefaultFontSize 12
+  shadowing false
+  ArrowColor #2563EB
+  BorderColor #94A3B8
+}
+
+object "患者 / 医生\n（参与者）" as ACT <<actor>>
+object "问诊会话面板\nOrderChatPanel" as B_CHAT <<boundary>>
+object "MessageAppService\n（消息应用服务）" as C_MSG <<control>>
+object "ConsultationOrder\n（问诊订单）" as E_ORDER <<entity>>
+object "ConsultationMessage\n（会话消息）" as E_MSG <<entity>>
+object "文件存储\n（图片）" as E_FS <<entity>>
+
+ACT --> B_CHAT : 1. 输入文字 / 选择图片并发送
+B_CHAT --> C_MSG : 2. send(orderId, type, content, imageUrl)
+C_MSG --> E_ORDER : 3. 校验参与人（患者或接诊医生）与订单状态
+C_MSG --> E_FS : 4. 图片消息：保存文件并取得 URL
+C_MSG --> E_MSG : 5. 保存消息（发送人、类型、内容、时间）
+C_MSG --> B_CHAT : 6. 返回消息 DTO
+B_CHAT --> C_MSG : 7. 轮询拉取新消息（3 秒间隔）
+
+note right of C_MSG
+  消息只允许订单双方读写；
+  订单进入「已完成」或「已取消」后只读；
+  本期用轮询而非 WebSocket，满足「3 秒内可见」的演示要求。
+end note
+@enduml

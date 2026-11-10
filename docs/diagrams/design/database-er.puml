@@ -1,0 +1,173 @@
+@startuml database-er
+title 图 2-24 数据库 ER 图（10 张表）
+
+skinparam {
+  DefaultFontName Microsoft YaHei
+  DefaultFontSize 10
+  shadowing false
+  ArrowColor #2563EB
+  BorderColor #94A3B8
+  EntityBackgroundColor #FFFFFF
+  EntityBorderColor #94A3B8
+}
+hide circle
+hide empty methods
+top to bottom direction
+
+entity "sys_user\n用户表" as sys_user {
+  * id : BIGINT <<PK>>
+  --
+  * phone : VARCHAR(20) <<UK>>
+  * password : VARCHAR(100)
+  * name : VARCHAR(50)
+  * role : VARCHAR(20)
+  * status : VARCHAR(20)
+  * created_at : DATETIME(3)
+  * updated_at : DATETIME(3)
+}
+
+entity "department\n科室表" as department {
+  * id : BIGINT <<PK>>
+  --
+  * name : VARCHAR(50) <<UK>>
+  * sort_no : INT
+  * created_at : DATETIME(3)
+  * updated_at : DATETIME(3)
+}
+
+entity "doctor\n医生表" as doctor {
+  * user_id : BIGINT <<PK,FK>>
+  --
+  * department_id : BIGINT <<FK>>
+  * title : VARCHAR(50)
+  * specialty : VARCHAR(500)
+  * consultation_fee : DECIMAL(10,2)
+  * online_status : TINYINT(1)
+  * created_at : DATETIME(3)
+  * updated_at : DATETIME(3)
+}
+
+entity "consultation_order\n问诊订单表" as orders {
+  * id : BIGINT <<PK>>
+  --
+  * order_no : VARCHAR(32) <<UK>>
+  * patient_id : BIGINT <<FK>>
+  * doctor_id : BIGINT <<FK>>
+  * department_id : BIGINT <<FK>>
+  * illness_desc : VARCHAR(1000)
+  * status : VARCHAR(30)
+  * fee : DECIMAL(10,2)
+  pay_time : DATETIME(3)
+  pay_method : VARCHAR(20)
+  reject_reason : VARCHAR(255)
+  * prescription_ready : TINYINT(1)
+  * no_prescription : TINYINT(1)
+  accepted_at : DATETIME(3)
+  finished_at : DATETIME(3)
+  cancelled_at : DATETIME(3)
+  cancel_reason : VARCHAR(50)
+  * version : INT
+  * created_at : DATETIME(3)
+  * updated_at : DATETIME(3)
+}
+
+entity "consultation_message\n会话消息表" as message {
+  * id : BIGINT <<PK>>
+  --
+  * order_id : BIGINT <<FK>>
+  * sender_id : BIGINT <<FK>>
+  * sender_role : VARCHAR(20)
+  * message_type : VARCHAR(20)
+  content : VARCHAR(2000)
+  image_url : VARCHAR(500)
+  * created_at : DATETIME(3)
+}
+
+entity "drug\n药品表" as drug {
+  * id : BIGINT <<PK>>
+  --
+  * name : VARCHAR(100)
+  * spec : VARCHAR(100)
+  * unit : VARCHAR(20)
+  * price : DECIMAL(10,2)
+  * is_prescription : TINYINT(1)
+  * status : VARCHAR(20)
+  * created_at : DATETIME(3)
+  * updated_at : DATETIME(3)
+}
+
+entity "prescription\n处方表" as prescription {
+  * id : BIGINT <<PK>>
+  --
+  * prescription_no : VARCHAR(32) <<UK>>
+  * order_id : BIGINT <<FK>>
+  * doctor_id : BIGINT <<FK>>
+  * patient_id : BIGINT <<FK>>
+  * diagnosis : VARCHAR(500)
+  * status : VARCHAR(30)
+  reject_reason : VARCHAR(500)
+  valid_until : DATETIME(3)
+  cancel_reason : VARCHAR(30)
+  cancel_note : VARCHAR(255)
+  submitted_at : DATETIME(3)
+  reviewed_at : DATETIME(3)
+  dispensed_at : DATETIME(3)
+  * version : INT
+  * created_at : DATETIME(3)
+  * updated_at : DATETIME(3)
+}
+
+entity "prescription_item\n处方明细表" as item {
+  * id : BIGINT <<PK>>
+  --
+  * prescription_id : BIGINT <<FK>>
+  * drug_id : BIGINT <<FK>>
+  * drug_name_snapshot : VARCHAR(100)
+  * drug_spec_snapshot : VARCHAR(100)
+  * unit_price_snapshot : DECIMAL(10,2)
+  * quantity : INT
+  * usage_desc : VARCHAR(255)
+  * days : INT
+  * subtotal : DECIMAL(10,2)
+  * created_at : DATETIME(3)
+}
+
+entity "prescription_review\n审方记录表" as review {
+  * id : BIGINT <<PK>>
+  --
+  * prescription_id : BIGINT <<FK>>
+  * reviewer_id : BIGINT <<FK>>
+  * review_result : VARCHAR(20)
+  reason : VARCHAR(500)
+  * reviewed_at : DATETIME(3)
+  * created_at : DATETIME(3)
+}
+
+entity "audit_log\n审计日志表" as audit {
+  * id : BIGINT <<PK>>
+  --
+  actor_id : BIGINT
+  * actor_role : VARCHAR(20)
+  * action : VARCHAR(50)
+  * target_type : VARCHAR(30)
+  * target_id : BIGINT
+  detail : JSON
+  * result : VARCHAR(20)
+  ip : VARCHAR(45)
+  trace_id : VARCHAR(36)
+  * created_at : DATETIME(3)
+}
+
+sys_user ||--o| doctor : 1:0..1 医生扩展
+department ||--o{ doctor : 1:0..*
+sys_user ||--o{ orders : 患者下单
+doctor ||--o{ orders : 医生接诊
+orders ||--o{ message : 1:0..*
+orders ||--o{ prescription : 1:0..*
+prescription ||--|{ item : 1:1..*
+drug ||--o{ item : 1:0..*
+prescription ||--o{ review : 1:0..*
+sys_user ||--o{ review : 审核人
+sys_user ||--o{ audit : 操作人
+
+@enduml

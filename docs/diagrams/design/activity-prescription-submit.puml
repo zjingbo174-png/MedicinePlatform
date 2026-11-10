@@ -1,0 +1,49 @@
+@startuml activity-prescription-submit
+title 图 2-21 活动图：提交处方审核（UC-10）
+
+skinparam {
+  DefaultFontName Microsoft YaHei
+  DefaultFontSize 12
+  shadowing false
+  ArrowColor #2563EB
+  BorderColor #94A3B8
+  ActivityBackgroundColor #FFFFFF
+  ActivityBorderColor #2563EB
+}
+
+start
+:医生在处方编辑页点击「提交审核」;
+:PrescriptionAppService.submit(id, version, doctorId);
+:加载处方：findByIdAndDoctorId(id, doctorId);
+if (处方存在且属于当前医生?) then (否)
+  :返回 404 NOT_FOUND;
+  stop
+endif
+:PrescriptionStateMachine.assertCanSubmit(status, version);
+if (状态为 DRAFT 或 REJECTED?) then (否)
+  :返回 409 STATE_CONFLICT;
+  stop
+endif
+if (诊断非空 且 明细 1~5 条?) then (否)
+  :返回 400 PARAM_INVALID;
+  stop
+endif
+:DrugQueryPort 校验明细药品均为启用状态;
+if (存在已停用药品?) then (是)
+  :返回 400 DRUG_DISABLED;
+  stop
+endif
+:Prescription.submit(now);
+:UPDATE prescription
+SET status='PENDING_REVIEW', submitted_at=?, version=?+1
+WHERE id=? AND status IN ('DRAFT','REJECTED') AND version=?;
+if (受影响行数 = 0?) then (是)
+  :返回 409（版本或状态已被他人改变）;
+  stop
+endif
+:写审计日志（PRESCRIPTION_SUBMIT）;
+:发布 PrescriptionSubmittedEvent（药师队列刷新）;
+:返回 200，处方状态「待审核」;
+stop
+
+@enduml

@@ -1,0 +1,51 @@
+@startuml activity-dispense
+title 图 2-23 活动图：核销发药与过期作废（UC-14）
+
+skinparam {
+  DefaultFontName Microsoft YaHei
+  DefaultFontSize 12
+  shadowing false
+  ArrowColor #2563EB
+  BorderColor #94A3B8
+  ActivityBackgroundColor #FFFFFF
+  ActivityBorderColor #2563EB
+}
+
+start
+:药师输入处方号，点击「核销发药」;
+:DispenseAppService.dispense(id, version, pharmacistId);
+
+fork
+  :校验状态 = PENDING_DISPENSING;
+  if (状态不符?) then (是)
+    :返回 409（已核销 / 已作废）;
+    stop
+  endif
+  :校验 now <= validUntil;
+  if (已过期?) then (是)
+    :返回 409 PRESCRIPTION_EXPIRED;
+    stop
+  endif
+  :UPDATE status='DISPENSED', dispensed_at=?, version+1
+   WHERE status='PENDING_DISPENSING' AND valid_until >= NOW() AND version=?;
+  if (更新行数 = 0?) then (是)
+    :返回 409;
+    stop
+  endif
+  :写审计日志（PRESCRIPTION_DISPENSE）;
+  :发布 PrescriptionDispensedEvent;
+  :返回核销成功;
+fork again
+  note right
+    系统定时任务（每天执行）：
+    扫描 status='PENDING_DISPENSING'
+    且 valid_until < NOW() 的处方，
+    逐条置为 CANCELLED，
+    cancel_reason='EXPIRED'（T9）。
+  end note
+  :UPDATE status='CANCELLED', cancel_reason='EXPIRED'
+   WHERE status='PENDING_DISPENSING' AND valid_until < NOW();
+end fork
+stop
+
+@enduml

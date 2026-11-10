@@ -1,0 +1,59 @@
+@startuml sequence-uc10
+title 图 2-13 UC-10 提交处方审核 · 顺序图
+
+skinparam {
+  DefaultFontName Microsoft YaHei
+  DefaultFontSize 11
+  shadowing false
+  ArrowColor #2563EB
+  BorderColor #94A3B8
+}
+
+actor 医生 as D
+participant "PrescriptionEditPage" as UI
+participant "PrescriptionController" as CTRL
+participant "PrescriptionAppService" as SVC
+participant "PrescriptionStateMachine" as SM
+participant "Prescription" as PRE
+participant "DrugQueryPort" as DRUG
+participant "PrescriptionRepository" as REPO
+database "MySQL" as DB
+participant "AuditRecorder" as AUDIT
+participant "EventPublisher" as EVENT
+
+D -> UI : 点击「提交审核」
+UI -> CTRL : POST /api/v1/prescriptions/{id}/submit
+CTRL -> SVC : submit(prescriptionId, version, currentDoctorId)
+SVC -> REPO : findByIdAndDoctorId(prescriptionId, doctorId)
+REPO --> SVC : PRE + items
+
+alt 处方不存在或不属于当前医生
+  SVC --> CTRL : 404 NOT_FOUND
+else 当前状态不允许提交
+  SVC --> CTRL : 409 STATE_CONFLICT
+else 诊断为空 / 明细不在 1~5 条
+  SVC --> CTRL : 400 PARAM_INVALID
+else 药品已停用
+  SVC --> CTRL : 400 DRUG_DISABLED
+else 校验通过
+  SVC -> SM : assertCanSubmit(status, itemCount, version)
+  SM --> SVC : ok
+  SVC -> PRE : submit(now)
+  SVC -> REPO : updateStatus(PENDING_REVIEW, version)
+  REPO -> DB : UPDATE prescription SET status='PENDING_REVIEW',\nsubmitted_at=?, version=?+1\nWHERE id=? AND status IN ('DRAFT','REJECTED') AND version=?
+  alt 受影响行数 = 0
+    SVC --> CTRL : 409 STATE_CONFLICT（请刷新后重试）
+  else 更新成功
+    SVC -> AUDIT : record(PRESCRIPTION_SUBMIT)
+    SVC -> EVENT : publish(PrescriptionSubmittedEvent)
+    SVC --> CTRL : PrescriptionVO(status=PENDING_REVIEW)
+    CTRL --> UI : 200 { data }
+  end
+end
+
+note right of EVENT
+  提交成功后发布领域事件，
+  药师待审队列据此刷新；
+  本期用进程内事件，不引入 MQ。
+end note
+@enduml

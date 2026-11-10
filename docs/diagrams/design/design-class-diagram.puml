@@ -1,0 +1,161 @@
+@startuml design-class-diagram
+title 图 2-3 设计类图（实体类与关系）\n控制类、边界类见 表 2-1；交互细节见各用例序列图
+
+skinparam {
+  DefaultFontName Microsoft YaHei
+  DefaultFontSize 11
+  shadowing false
+  ArrowColor #2563EB
+  BorderColor #94A3B8
+  ClassBackgroundColor #FFFFFF
+  ClassBorderColor #94A3B8
+  linetype ortho
+}
+hide circle
+hide empty members
+top to bottom direction
+
+package "entity 实体类（领域对象）" #EFF6FF {
+  class "用户 User" as User {
+    - id : Long
+    - phone : String
+    - passwordHash : String
+    - name : String
+    - role : Role
+    - status : UserStatus
+    + isActive() : boolean
+    + hasRole(role) : boolean
+  }
+  class "医生 Doctor" as Doctor {
+    - userId : Long
+    - departmentId : Long
+    - title : String
+    - specialty : String
+    - consultationFee : BigDecimal
+    - onlineStatus : boolean
+    + canAccept() : boolean
+  }
+  class "科室 Department" as Department {
+    - id : Long
+    - name : String
+    - sortNo : Integer
+  }
+  class "问诊订单 ConsultationOrder" as Order {
+    - id : Long
+    - orderNo : String
+    - patientId : Long
+    - doctorId : Long
+    - departmentId : Long
+    - illnessDesc : String
+    - status : OrderStatus
+    - fee : BigDecimal
+    - payTime : LocalDateTime
+    - prescriptionReady : boolean
+    - noPrescription : boolean
+    - version : Integer
+    + pay(now)
+    + accept(now)
+    + reject(reason, now)
+    + markPrescriptionReady()
+    + end(now)
+  }
+  class "会话消息 ConsultationMessage" as Message {
+    - id : Long
+    - orderId : Long
+    - senderId : Long
+    - senderRole : Role
+    - messageType : MessageType
+    - content : String
+    - imageUrl : String
+    - createdAt : LocalDateTime
+  }
+  class "处方 Prescription" as Prescription {
+    - id : Long
+    - prescriptionNo : String
+    - orderId : Long
+    - doctorId : Long
+    - patientId : Long
+    - diagnosis : String
+    - status : PrescriptionStatus
+    - rejectReason : String
+    - validUntil : LocalDateTime
+    - cancelReason : String
+    - version : Integer
+    + submit(now)
+    + withdraw()
+    + approve(reviewerId, now)
+    + reject(reviewerId, reason, now)
+    + resubmit(now)
+    + dispense(now)
+    + cancel(reason, note, now)
+  }
+  class "处方明细 PrescriptionItem" as Item {
+    - id : Long
+    - drugId : Long
+    - drugNameSnapshot : String
+    - drugSpecSnapshot : String
+    - unitPriceSnapshot : BigDecimal
+    - quantity : Integer
+    - usageDesc : String
+    - days : Integer
+    + subtotal() : BigDecimal
+  }
+  class "药品 Drug" as Drug {
+    - id : Long
+    - name : String
+    - spec : String
+    - unit : String
+    - price : BigDecimal
+    - isPrescription : boolean
+    - status : DrugStatus
+    + isEnabled() : boolean
+  }
+  class "审方记录 ReviewRecord" as Review {
+    - id : Long
+    - prescriptionId : Long
+    - reviewerId : Long
+    - reviewResult : ReviewResult
+    - reason : String
+    - reviewedAt : LocalDateTime
+  }
+  class "审计日志 AuditLog" as Audit {
+    - id : Long
+    - actorId : Long
+    - actorRole : Role
+    - action : String
+    - targetType : String
+    - targetId : Long
+    - result : String
+    - traceId : String
+    - createdAt : LocalDateTime
+  }
+}
+
+User "1" -- "0..1" Doctor
+Department "1" -- "0..*" Doctor
+User "1" -- "0..*" Order : 患者下单
+Doctor "1" -- "0..*" Order : 接诊
+Order "1" -- "0..*" Message
+Order "1" -- "0..*" Prescription
+Prescription "1" -- "1..*" Item
+Drug "1" -- "0..*" Item : 快照来源
+Prescription "1" -- "0..*" Review
+User "1" -- "0..*" Review : 审核人
+User "1" -- "0..*" Audit : 操作人
+
+note bottom of Prescription
+  处方状态：DRAFT / PENDING_REVIEW / REJECTED /
+  PENDING_DISPENSING / DISPENSED / CANCELLED；
+  迁移入口只有 PrescriptionStateMachine，
+  每次迁移带 version 做乐观锁。
+end note
+
+note bottom of Order
+  订单状态：PENDING_PAYMENT → PENDING_ACCEPT →
+  IN_CONSULTATION → COMPLETED；
+  拒诊、未支付超时进入 CANCELLED。
+  prescriptionReady 由处方流转事件更新，
+  用于结束问诊前的「已有处方」判断。
+end note
+
+@enduml

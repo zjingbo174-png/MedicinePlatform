@@ -1,0 +1,58 @@
+@startuml sequence-uc08
+title 图 2-9 UC-08 图文问诊 · 顺序图
+
+skinparam {
+  DefaultFontName Microsoft YaHei
+  DefaultFontSize 11
+  shadowing false
+  ArrowColor #2563EB
+  BorderColor #94A3B8
+}
+
+actor 患者 as P
+actor 医生 as D
+participant "OrderChatPanel" as UI
+participant "MessageController" as CTRL
+participant "MessageAppService" as SVC
+participant "ConsultationOrder" as ORDER
+participant "ConsultationMessage" as MSG
+participant "MessageRepository" as REPO
+database "MySQL" as DB
+
+P -> UI : 输入文字，点击发送
+UI -> CTRL : POST /api/v1/orders/{id}/messages
+CTRL -> SVC : send(orderId, senderId, type, content)
+SVC -> REPO : findOrderByIdAndParticipant(orderId, senderId)
+REPO --> SVC : ORDER
+
+alt 非订单参与人（患者本人 / 接诊医生之外）
+  SVC --> CTRL : 404 NOT_FOUND
+else 订单已结束或已取消
+  SVC --> CTRL : 409 STATE_CONFLICT（会话只读）
+else 内容为空或超过 1000 字
+  SVC --> CTRL : 400 PARAM_INVALID
+else 校验通过
+  SVC -> ORDER : assertInConsultation()
+  SVC -> MSG : create(senderId, senderRole, type, content, now)
+  SVC -> REPO : save(message)
+  REPO -> DB : INSERT consultation_message ...
+  SVC --> CTRL : MessageVO
+  CTRL --> UI : 200 { data }
+end
+
+D -> UI : 打开同一订单会话
+UI -> CTRL : GET /api/v1/orders/{id}/messages?afterId=...
+CTRL -> SVC : list(orderId, currentUserId, afterId)
+SVC -> REPO : findByOrderIdAndIdGreaterThan(...)
+REPO -> DB : SELECT ... ORDER BY id
+REPO --> SVC : messages
+SVC --> CTRL : 消息列表
+CTRL --> UI : 200 { data }
+UI --> D : 3 秒内显示新消息
+
+note right of SVC
+  图片消息先调用上传接口得到 imageUrl，
+  再以 type=IMAGE、content=imageUrl 保存；
+  消息表不存二进制文件。
+end note
+@enduml

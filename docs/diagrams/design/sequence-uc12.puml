@@ -1,0 +1,55 @@
+@startuml sequence-uc12
+title 图 2-17 UC-12 驳回处方 · 顺序图
+
+skinparam {
+  DefaultFontName Microsoft YaHei
+  DefaultFontSize 11
+  shadowing false
+  ArrowColor #2563EB
+  BorderColor #94A3B8
+}
+
+actor 药师 as PH
+participant "PharmacistReviewPage" as UI
+participant "PharmacyReviewController" as CTRL
+participant "PrescriptionReviewAppService" as SVC
+participant "Prescription" as PRE
+participant "PrescriptionRepository" as REPO
+database "MySQL" as DB
+participant "ReviewRecordRepository" as REC_REPO
+participant "AuditRecorder" as AUDIT
+participant "EventPublisher" as EVENT
+
+PH -> UI : 填写驳回理由，点击「驳回」
+UI -> CTRL : POST /api/v1/pharmacy/prescriptions/{id}/reject
+CTRL -> SVC : reject(prescriptionId, reason, version, pharmacistId)
+SVC -> REPO : findById(prescriptionId)
+REPO --> SVC : PRE
+
+alt 处方不存在
+  SVC --> CTRL : 404 NOT_FOUND
+else 驳回理由少于 10 字
+  SVC --> CTRL : 400 PARAM_INVALID
+else 状态不是待审核
+  SVC --> CTRL : 409 STATE_CONFLICT
+else 校验通过
+  SVC -> PRE : reject(pharmacistId, reason, now)
+  SVC -> REPO : updateStatus(REJECTED, rejectReason, version)
+  REPO -> DB : UPDATE prescription SET status='REJECTED',\nreject_reason=?, reviewed_at=?, version=?+1\nWHERE id=? AND status='PENDING_REVIEW' AND version=?
+  alt 受影响行数 = 0
+    SVC --> CTRL : 409 STATE_CONFLICT（该处方已被处理）
+  else 更新成功
+    SVC -> REC_REPO : insert(ReviewRecord(REJECTED, reason))
+    SVC -> AUDIT : record(PRESCRIPTION_REJECT, reason)
+    SVC -> EVENT : publish(PrescriptionRejectedEvent)
+    SVC --> CTRL : PrescriptionVO(status=REJECTED)
+    CTRL --> UI : 200 { data }
+  end
+end
+
+note right of EVENT
+  医生端通过处方状态与事件感知驳回，
+  列表标记「已驳回」并展示驳回理由；
+  本期不单独建通知表，避免新增表与消息通道。
+end note
+@enduml

@@ -1,0 +1,60 @@
+@startuml sequence-uc09
+title 图 2-11 UC-09 开具处方（草稿） · 顺序图
+
+skinparam {
+  DefaultFontName Microsoft YaHei
+  DefaultFontSize 11
+  shadowing false
+  ArrowColor #2563EB
+  BorderColor #94A3B8
+}
+
+actor 医生 as D
+participant "PrescriptionEditPage" as UI
+participant "PrescriptionController" as CTRL
+participant "PrescriptionDraftService" as SVC
+participant "ConsultationOrderRepository" as ORDER_REPO
+participant "DrugQueryPort" as DRUG
+participant "Prescription" as PRE
+participant "PrescriptionRepository" as PRE_REPO
+database "MySQL" as DB
+
+D -> UI : 在问诊中订单点击「开具处方」
+UI -> CTRL : POST /api/v1/orders/{id}/prescriptions
+CTRL -> SVC : createOrGetDraft(orderId, currentDoctorId)
+SVC -> ORDER_REPO : findByIdAndDoctorId(orderId, doctorId)
+ORDER_REPO --> SVC : ORDER
+alt 订单不属于当前医生或状态不是「问诊中」
+  SVC --> CTRL : 404 / 409
+  CTRL --> UI : 错误响应
+else 已有 DRAFT
+  SVC --> CTRL : 返回已有处方
+else 新建草稿
+  SVC -> PRE : createDraft(orderId, doctorId, patientId)
+  SVC -> PRE_REPO : save(prescription)
+  PRE_REPO -> DB : INSERT prescription(status='DRAFT')
+  SVC --> CTRL : PrescriptionVO
+end
+
+D -> UI : 检索药品、填写诊断与 1~5 条明细
+UI -> CTRL : PUT /api/v1/prescriptions/{id}/draft
+CTRL -> SVC : saveDraft(prescriptionId, diagnosis, items, version)
+SVC -> PRE_REPO : findByIdAndDoctorId(prescriptionId, doctorId)
+SVC -> DRUG : findEnabledByIds(drugIds)
+DRUG --> SVC : 药品列表（启用）
+alt 诊断为空 / 明细为空或超过 5 条 / 药品已停用
+  SVC --> CTRL : 400 PARAM_INVALID
+else 校验通过
+  SVC -> PRE : updateDraft(diagnosis, items)
+  SVC -> PRE_REPO : saveWithItems(prescription, items, version)
+  PRE_REPO -> DB : UPDATE prescription ...；INSERT/UPDATE prescription_item ...
+  SVC --> CTRL : PrescriptionVO
+  CTRL --> UI : 200 { data }
+end
+
+note right of SVC
+  明细的 drugNameSnapshot / unitPriceSnapshot
+  在保存时从药品目录复制，作为历史快照；
+  草稿保存使用 version 做乐观锁。
+end note
+@enduml

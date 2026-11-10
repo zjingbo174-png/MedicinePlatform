@@ -1,0 +1,58 @@
+@startuml activity-review-cycle
+title 图 2-22 活动图：审方、驳回与修改重提（UC-11 / UC-12 / UC-13）
+
+skinparam {
+  DefaultFontName Microsoft YaHei
+  DefaultFontSize 12
+  shadowing false
+  ArrowColor #2563EB
+  BorderColor #94A3B8
+  ActivityBackgroundColor #FFFFFF
+  ActivityBorderColor #2563EB
+}
+
+start
+:药师打开待审队列;
+:选择一张「待审核」处方;
+:PrescriptionReviewAppService.approve / reject;
+:加载处方并校验状态 = PENDING_REVIEW;
+if (状态或版本已变化?) then (是)
+  :返回 409，提示刷新;
+  stop
+endif
+if (审核结论 = 通过?) then (通过)
+  :计算 validUntil = now + 3 天;
+  :UPDATE status='PENDING_DISPENSING', valid_until, version+1
+   WHERE status='PENDING_REVIEW' AND version=?;
+  if (更新行数 = 0?) then (是)
+    :返回 409;
+    stop
+  endif
+  :写审方记录（APPROVED）、审计日志;
+  :发布 PrescriptionCirculatedEvent;
+  :处方进入「待核销」;
+  stop
+else (驳回)
+  if (驳回理由 ≥ 10 字?) then (否)
+    :返回 400 PARAM_INVALID;
+    stop
+  endif
+  :UPDATE status='REJECTED', reject_reason, version+1
+   WHERE status='PENDING_REVIEW' AND version=?;
+  if (更新行数 = 0?) then (是)
+    :返回 409;
+    stop
+  endif
+  :写审方记录（REJECTED）、审计日志;
+  :发布 PrescriptionRejectedEvent;
+  :处方进入「已驳回」;
+endif
+
+:医生查看驳回理由;
+:修改诊断 / 明细（仍为同一处方号）;
+:重新提交;
+:处方回到「待审核」;
+note right: 回到「药师打开待审队列」继续下一轮审阅
+stop
+
+@enduml

@@ -1,0 +1,33 @@
+@startuml robustness-uc07
+title 图 2-6 UC-07 接诊与拒诊 · 鲁棒图
+
+skinparam {
+  DefaultFontName Microsoft YaHei
+  DefaultFontSize 12
+  shadowing false
+  ArrowColor #2563EB
+  BorderColor #94A3B8
+}
+
+object "医生\n（参与者）" as ACT <<actor>>
+object "医生待接诊页\nDoctorOrderPage" as B_ORDER <<boundary>>
+object "ConsultationOrderAppService\n（订单应用服务）" as C_ORDER <<control>>
+object "RefundGateway\n（模拟退款）" as C_REFUND <<control>>
+object "ConsultationOrder\n（问诊订单）" as E_ORDER <<entity>>
+object "AuditLog\n（审计日志）" as E_AUDIT <<entity>>
+
+ACT --> B_ORDER : 1. 查看待接诊列表并选择订单
+B_ORDER --> C_ORDER : 2. accept(orderId) / reject(orderId, reason)
+C_ORDER --> E_ORDER : 3. 校验归属（doctorId）与状态（待接诊）
+C_ORDER --> E_ORDER : 4a. 接诊：状态改为问诊中，记录接诊时间
+C_ORDER --> C_REFUND : 4b. 拒诊：调用模拟退款
+C_ORDER --> E_ORDER : 5b. 状态改为已取消，记录拒诊理由
+C_ORDER --> E_AUDIT : 6. 写审计日志（接诊 / 拒诊）
+C_ORDER --> B_ORDER : 7. 返回处理结果
+
+note right of C_ORDER
+  接诊与拒诊都必须校验：
+  ① 当前用户是订单医生；② 订单状态为「待接诊」。
+  拒诊理由不能为空；退款为模拟动作，只记录结果。
+end note
+@enduml

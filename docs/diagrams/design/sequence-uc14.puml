@@ -1,0 +1,53 @@
+@startuml sequence-uc14
+title 图 2-19 UC-14 核销处方 · 顺序图
+
+skinparam {
+  DefaultFontName Microsoft YaHei
+  DefaultFontSize 11
+  shadowing false
+  ArrowColor #2563EB
+  BorderColor #94A3B8
+}
+
+actor 药师 as PH
+participant "PharmacistDispensePage" as UI
+participant "PharmacyDispenseController" as CTRL
+participant "DispenseAppService" as SVC
+participant "Prescription" as PRE
+participant "PrescriptionRepository" as REPO
+database "MySQL" as DB
+participant "AuditRecorder" as AUDIT
+participant "EventPublisher" as EVENT
+
+PH -> UI : 输入处方号，点击「核销发药」
+UI -> CTRL : POST /api/v1/pharmacy/prescriptions/{id}/dispense
+CTRL -> SVC : dispense(prescriptionId, version, pharmacistId)
+SVC -> REPO : findById(prescriptionId)
+REPO --> SVC : PRE
+
+alt 处方不存在
+  SVC --> CTRL : 404 NOT_FOUND
+else 状态不是待核销
+  SVC --> CTRL : 409 STATE_CONFLICT（可能已核销 / 已作废）
+else 已超过有效期
+  SVC --> CTRL : 409 PRESCRIPTION_EXPIRED
+else 校验通过
+  SVC -> PRE : dispense(now)
+  SVC -> REPO : updateStatus(DISPENSED, dispensedAt, version)
+  REPO -> DB : UPDATE prescription SET status='DISPENSED',\ndispensed_at=?, version=?+1\nWHERE id=? AND status='PENDING_DISPENSING' AND\nvalid_until >= NOW() AND version=?
+  alt 受影响行数 = 0
+    SVC --> CTRL : 409 STATE_CONFLICT
+  else 更新成功
+    SVC -> AUDIT : record(PRESCRIPTION_DISPENSE)
+    SVC -> EVENT : publish(PrescriptionDispensedEvent)
+    SVC --> CTRL : PrescriptionVO(status=DISPENSED)
+    CTRL --> UI : 200 { data }
+  end
+end
+
+note right of EVENT
+  核销成功后订单可结束问诊；
+  consultation 通过处方流转事件（审核通过 /
+  核销）更新订单的「已有处方」标记，不直接查处方表。
+end note
+@enduml

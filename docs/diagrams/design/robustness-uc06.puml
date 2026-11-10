@@ -1,0 +1,33 @@
+@startuml robustness-uc06
+title 图 2-4 UC-06 支付问诊费 · 鲁棒图
+
+skinparam {
+  DefaultFontName Microsoft YaHei
+  DefaultFontSize 12
+  shadowing false
+  ArrowColor #2563EB
+  BorderColor #94A3B8
+  ObjectBackgroundColor #FFFFFF
+}
+
+object "患者\n（参与者）" as ACT <<actor>>
+object "订单支付页\nOrderPayPage" as B_PAY <<boundary>>
+object "ConsultationOrderAppService\n（订单应用服务）" as C_ORDER <<control>>
+object "PasswordVerifier\n（密码校验器）" as C_PWD <<control>>
+object "ConsultationOrder\n（问诊订单）" as E_ORDER <<entity>>
+object "User\n（用户）" as E_USER <<entity>>
+
+ACT --> B_PAY : 1. 输入登录密码并确认支付
+B_PAY --> C_ORDER : 2. pay(orderId, password)
+C_ORDER --> E_ORDER : 3. 校验归属（patientId）与状态
+C_ORDER --> C_PWD : 4. verify(userId, password)
+C_PWD --> E_USER : 5. 读取密码摘要并 BCrypt 比对
+C_ORDER --> E_ORDER : 6. 记录支付时间、状态改为待接诊
+C_ORDER --> B_PAY : 7. 返回支付结果
+
+note right of C_ORDER
+  支付为教学模拟：以登录密码作为支付确认，
+  密码错误不改变订单状态，允许重试；
+  待支付超过 30 分钟由定时任务关闭订单。
+end note
+@enduml

@@ -1,0 +1,54 @@
+@startuml sequence-uc11
+title 图 2-15 UC-11 审核处方通过 · 顺序图
+
+skinparam {
+  DefaultFontName Microsoft YaHei
+  DefaultFontSize 11
+  shadowing false
+  ArrowColor #2563EB
+  BorderColor #94A3B8
+}
+
+actor 药师 as PH
+participant "PharmacistReviewPage" as UI
+participant "PharmacyReviewController" as CTRL
+participant "PrescriptionReviewAppService" as SVC
+participant "Prescription" as PRE
+participant "PrescriptionRepository" as REPO
+database "MySQL" as DB
+participant "ReviewRecordRepository" as REC_REPO
+participant "AuditRecorder" as AUDIT
+participant "EventPublisher" as EVENT
+
+PH -> UI : 在待审队列选择处方，点击「通过」
+UI -> CTRL : POST /api/v1/pharmacy/prescriptions/{id}/approve
+CTRL -> SVC : approve(prescriptionId, version, currentPharmacistId)
+SVC -> REPO : findById(prescriptionId)
+REPO --> SVC : PRE
+
+alt 处方不存在
+  SVC --> CTRL : 404 NOT_FOUND
+else 状态不是待审核
+  SVC --> CTRL : 409 STATE_CONFLICT
+else 版本冲突
+  SVC -> PRE : approve(reviewerId, now)
+  SVC -> REPO : updateStatus(PENDING_DISPENSING, validUntil, version)
+  REPO -> DB : UPDATE prescription SET status='PENDING_DISPENSING',\nvalid_until=?, reviewed_at=?, version=?+1\nWHERE id=? AND status='PENDING_REVIEW' AND version=?
+  alt 受影响行数 = 0
+    SVC --> CTRL : 409 STATE_CONFLICT（该处方已被处理）
+  else 更新成功
+    SVC -> REC_REPO : insert(ReviewRecord(APPROVED, reviewerId, now))
+    REC_REPO -> DB : INSERT prescription_review ...
+    SVC -> AUDIT : record(PRESCRIPTION_APPROVE)
+    SVC -> EVENT : publish(PrescriptionCirculatedEvent)
+    SVC --> CTRL : PrescriptionVO(status=PENDING_DISPENSING)
+    CTRL --> UI : 200 { data }
+  end
+end
+
+note right of SVC
+  审核人与审核时间写入审方记录，不可修改；
+  有效期 3 天从审核通过时刻起算，
+  到期由定时任务置为「已作废」（T9）。
+end note
+@enduml

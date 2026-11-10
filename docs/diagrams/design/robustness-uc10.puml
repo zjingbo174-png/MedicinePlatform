@@ -1,0 +1,37 @@
+@startuml robustness-uc10
+title 图 2-12 UC-10 提交处方审核 · 鲁棒图
+
+skinparam {
+  DefaultFontName Microsoft YaHei
+  DefaultFontSize 12
+  shadowing false
+  ArrowColor #2563EB
+  BorderColor #94A3B8
+}
+
+object "医生\n（参与者）" as ACT <<actor>>
+object "处方编辑页\nPrescriptionEditPage" as B_PRE <<boundary>>
+object "PrescriptionAppService\n（处方应用服务）" as C_PRE <<control>>
+object "PrescriptionStateMachine\n（处方状态机）" as C_SM <<control>>
+object "DrugQueryPort\n（药品目录查询）" as C_DRUG <<control>>
+object "Prescription\n（处方）" as E_PRE <<entity>>
+object "PrescriptionItem\n（处方明细）" as E_ITEM <<entity>>
+object "AuditLog\n（审计日志）" as E_AUDIT <<entity>>
+
+ACT --> B_PRE : 1. 点击「提交审核」
+B_PRE --> C_PRE : 2. submit(prescriptionId, version)
+C_PRE --> E_PRE : 3. 加载并校验归属（doctorId）
+C_PRE --> C_SM : 4. assertCanSubmit(status, items, version)
+C_SM --> E_PRE : 5. 读取当前状态与版本
+C_PRE --> E_ITEM : 6. 校验诊断非空、明细 1~5 条
+C_PRE --> C_DRUG : 7. 校验药品均为启用状态
+C_PRE --> E_PRE : 8. 状态改为待审核，记录提交时间
+C_PRE --> E_AUDIT : 9. 写审计日志
+C_PRE --> B_PRE : 10. 返回提交结果并通知药师队列
+
+note right of C_SM
+  合法迁移：DRAFT / REJECTED → PENDING_REVIEW；
+  其它状态一律 409；
+  状态更新语句带 status 与 version 条件。
+end note
+@enduml
