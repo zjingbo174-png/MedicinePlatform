@@ -36,4 +36,4 @@ java -jar plantuml.jar -charset UTF-8 -tpng docs/diagrams/design/*.puml
 
 ## 当前状态
 
-v1.0 初稿（2026-11-10）：已完成正文与 24 张图，尚未提交到 Git；待组长与组员评审后，再决定是否提交分支 / 发起 PR。
+v1.0 初稿（2026-11-10）：已完成正文与 24 张图，已推送到 `docs/design-baseline` 分支（未合并）；待组长与组员评审后，再决定是否发起 PR。
